@@ -28,13 +28,20 @@ async def file(message: Message, state: FSMContext):
     else:
         type, id = 'na', 'N/A'
 
+    if not id or id == 'N/A':
+        return await message.answer("Failed to get ID of the file")
+
     if type not in ids.keys():
         ids[type] = []
     if id not in ids[type]:
         ids[type].append(id)
-        await message.answer(f'File proceeded!\n\nYour file ID: <code>{id}</code>')
+        await message.answer(
+            f'File proceeded!\n\n<b>Type:</b> {type}\n<b>Your file ID</b>: <code>{id}</code>'
+        )
     else:
-        await message.answer(f'File already exists!\n\nIts ID: <code>{id}</code>')
+        await message.answer(
+            f'File already exists!\n\n<b>Its ID:</b> <code>{id}</code>'
+        )
 
     print(ids)
     await state.clear()
@@ -42,21 +49,25 @@ async def file(message: Message, state: FSMContext):
 
 async def get_file_by_id(message: Message, command: CommandObject):
     id = command.args
+    if not id:
+        return await message.answer('Specify file ID: <code>/get file_id</code>')
+
+    type_methods = {
+        'document': message.answer_document,
+        'photo': message.answer_photo,
+        'video': message.answer_video,
+        'audio': message.answer_audio,
+        'voice': message.answer_voice,
+    }
+
     for type, values in ids.items():
-        for v in values:
-            if v == id:
-                if type == 'document':
-                    return await message.answer_document(id)
-                elif type == 'photo':
-                    return await message.answer_photo(id)
-                elif type == 'video':
-                    return await message.answer_video(id)
-                elif type == 'audio':
-                    return await message.answer_audio(id)
-                elif type == 'voice':
-                    return await message.answer_voice(id)
-    await message.answer(text=f'No files found with ID: {id}')
-    print(id)
+        if id in values and type in type_methods:
+            try:
+                return await type_methods[type](id)
+            except Exception as e:
+                return await message.answer(f'Error occurred, when sending file: {e}')
+
+    await message.answer(f'No files found with ID: <code>{id}</code>')
 
 
 def register_user_messages(dp: Dispatcher):
