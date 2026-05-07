@@ -3,6 +3,7 @@ from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from database import file_db
+from keyboards import get_dynamic_pagination_keyboard
 from state.states import User
 from utils import generate_unique_id
 
@@ -77,12 +78,24 @@ async def get_file_by_id(message: Message, command: CommandObject):
 
 
 async def get_user_files(message: Message):
-    user_id = message.from_user.id
-    user_files = await file_db.get_user_files(user_id)
-    pretty = ''.join(
-        [f'• {raw['type']} <code>{raw['unique_id']}</code>\n' for raw in user_files]
+    result = await file_db.get_user_files_paginated(message.from_user.id)
+
+    if not result['files']:
+        await message.answer("You don't have any uploaded files.")
+
+    files_text = ''.join(
+        [f'• {f['type']} <code>{f['unique_id']}</code>\n' for f in result['files']]
     )
-    await message.answer(f'<b>All Entries</b> ({user_id})\n\n{pretty}')
+    total_pages = (result['total'] + 19) // 20
+    text = (
+        f'<b>Your files (page 1/{total_pages}):</b>\n\n'
+        f'{files_text}\n\n'
+        f'<i>Total files: {result['total']}</i>'
+    )
+
+    await message.answer(
+        text, reply_markup=get_dynamic_pagination_keyboard(1, total_pages)
+    )
 
 
 def register_user_messages(dp: Dispatcher):

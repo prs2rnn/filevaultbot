@@ -59,5 +59,38 @@ class FileDatabase:
             if row:
                 return {'original_id': row[0], 'type': row[1]}
 
+    async def get_user_files_paginated(
+        self, user_id: int, page: int = 1, page_size: int = 20
+    ):
+        await self._ensure_tables_exist()
+
+        offset = (page - 1) * page_size
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                '''
+            select unique_id, type, created_at
+            from files where user_id = ? order by created_at
+            limit ? offset ?;
+
+            ''',
+                (user_id, page_size, offset),
+            )
+            rows = await cursor.fetchall()
+
+            total_cursor = await db.execute(
+                'select count(*) from files WHERE user_id = ?', (user_id,)
+            )
+            total = (await total_cursor.fetchone())[0]
+        return {
+            'files': [
+                {'unique_id': row[0], 'type': row[1], 'created_at': row[2]}
+                for row in rows
+            ],
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+        }
+
 
 file_db = FileDatabase()
