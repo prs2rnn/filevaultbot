@@ -76,6 +76,15 @@ async def get_file_by_id(message: Message, command: CommandObject):
         await message.answer(f'Error occurred, when sending file: {e}')
 
 
+async def get_user_files(message: Message):
+    user_id = message.from_user.id
+    user_files = await file_db.get_user_files(user_id)
+    pretty = ''.join(
+        [f'• {raw['type']} <code>{raw['unique_id']}</code>\n' for raw in user_files]
+    )
+    await message.answer(f'<b>All Entries</b> ({user_id})\n\n{pretty}')
+
+
 def register_user_messages(dp: Dispatcher):
     """Registers all user message handlers with the dispatcher."""
     dp.message.register(start, CommandStart())
@@ -88,3 +97,4 @@ def register_user_messages(dp: Dispatcher):
         get_file_by_id,
         Command('get'),
     )
+    dp.message.register(get_user_files, Command('all'))
