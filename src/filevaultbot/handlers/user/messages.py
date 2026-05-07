@@ -4,13 +4,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from state.states import User
 
+ids = {}
+
 
 async def start(message: Message, state: FSMContext):
     await message.answer(
         text=f'<b>Welcome to the bot!</b>\nSend me a file, and I\'ll return its ID',
     )
     await state.set_state(User.file)
-    await state.update_data(ids={})
 
 
 async def file(message: Message, state: FSMContext):
@@ -27,22 +28,20 @@ async def file(message: Message, state: FSMContext):
     else:
         type, id = 'na', 'N/A'
 
-    data = await state.get_data()
-    ids = data.get('ids', {})
-    if type in ids.keys():
-        ids.get(type, []).append(id)
-    else:
+    if type not in ids.keys():
         ids[type] = []
-        ids.get(type).append(id)
-    print(data)
+    if id not in ids[type]:
+        ids[type].append(id)
+        await message.answer(f'File proceeded!\n\nYour file ID: <code>{id}</code>')
+    else:
+        await message.answer(f'File already exists!\n\nIts ID: <code>{id}</code>')
 
-    await message.answer(f'File proceeded!\n\nYour file ID: <code>{id}</code>')
+    print(ids)
+    await state.clear()
 
 
-async def get_file_by_id(message: Message, command: CommandObject, state: FSMContext):
+async def get_file_by_id(message: Message, command: CommandObject):
     id = command.args
-    data = await state.get_data()
-    ids = data.get('ids', {})
     for type, values in ids.items():
         for v in values:
             if v == id:
@@ -69,6 +68,5 @@ def register_user_messages(dp: Dispatcher):
     )
     dp.message.register(
         get_file_by_id,
-        StateFilter(User.file),
         Command('get'),
     )
