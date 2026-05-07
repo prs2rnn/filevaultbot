@@ -1,0 +1,96 @@
+import asyncio
+
+import aiosqlite
+
+
+class FileDatabase:
+    def __init__(self, db_path='files.db'):
+        self.db_path = db_path
+        self.lock = asyncio.Lock()
+
+    async def _ensure_tables_exist(self):
+        async with self.lock:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    '''
+                CREATE TABLE IF NOT EXISTS files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    unique_id TEXT UNIQUE NOT NULL,
+                    original_id TEXT UNIQUE NOT NULL,
+                    type TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    created_at REAL DEFAULT (strftime('%s', 'now'))
+                )
+                '''
+                )
+                await db.commit()
+
+    async def add_file(self, unique_id: str, original_id: str, type: str, user_id: int):
+        await self._ensure_tables_exist()
+        async with self.lock:
+            async with aiosqlite.connect(self.db_path) as db:
+                try:
+                    await db.execute(
+                        'INSERT INTO files (unique_id, original_id, type, user_id) VALUES (?, ?, ?, ?)',
+                        (unique_id, original_id, type, user_id),
+                    )
+                    await db.commit()
+                    return True
+                except aiosqlite.IntegrityError:
+                    return False
+
+    async def get_user_files(self, user_id: int):
+        await self._ensure_tables_exist()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                'SELECT unique_id, type FROM files WHERE user_id = ? ORDER BY created_at DESC',
+                (user_id,),
+            )
+            rows = await cursor.fetchall()
+            return [{'unique_id': row[0], 'type': row[1]} for row in rows]
+
+    async def get_file_by_unique_id(self, unique_id: str):
+        await self._ensure_tables_exist()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                'SELECT original_id, type FROM files WHERE unique_id = ?', (unique_id,)
+            )
+            row = await cursor.fetchone()
+            if row:
+                return {'original_id': row[0], 'type': row[1]}
+
+    async def get_user_files_paginated(
+        self, user_id: int, page: int = 1, page_size: int = 20
+    ):
+        await self._ensure_tables_exist()
+
+        offset = (page - 1) * page_size
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                '''
+            select unique_id, type, created_at
+            from files where user_id = ? order by created_at
+            limit ? offset ?;
+
+            ''',
+                (user_id, page_size, offset),
+            )
+            rows = await cursor.fetchall()
+
+            total_cursor = await db.execute(
+                'select count(*) from files WHERE user_id = ?', (user_id,)
+            )
+            total = (await total_cursor.fetchone())[0]
+        return {
+            'files': [
+                {'unique_id': row[0], 'type': row[1], 'created_at': row[2]}
+                for row in rows
+            ],
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+        }
+
+
+file_db = FileDatabase()

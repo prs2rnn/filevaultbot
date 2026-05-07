@@ -2,12 +2,14 @@ from aiogram import Dispatcher, F
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from database import file_db
+from keyboards import get_dynamic_pagination_keyboard
 from state.states import User
-
-ids = {}
+from utils import generate_unique_id
 
 
 async def start(message: Message, state: FSMContext):
+    """Handler for the /start command."""
     await message.answer(
         text=f'<b>Welcome to the bot!</b>\nSend me a file, and I\'ll return its ID',
     )
@@ -15,42 +17,51 @@ async def start(message: Message, state: FSMContext):
 
 
 async def file(message: Message, state: FSMContext):
+    """Handler for file uploads (documents, photos, videos, audio, voice messages)."""
     if message.document:
-        type, id = 'document', message.document.file_id
+        type, original_id = 'document', message.document.file_id
     elif message.photo:
-        type, id = 'photo', message.photo[-1].file_id
+        type, original_id = 'photo', message.photo[-1].file_id
     elif message.video:
-        type, id = 'video', message.video.file_id
+        type, original_id = 'video', message.video.file_id
     elif message.audio:
-        type, id = 'audio', message.audio.file_id
+        type, original_id = 'audio', message.audio.file_id
     elif message.voice:
-        type, id = 'voice', message.voice.file_id
+        type, original_id = 'voice', message.voice.file_id
     else:
-        type, id = 'na', 'N/A'
+        type, original_id = 'na', 'N/A'
 
-    if not id or id == 'N/A':
+    if not original_id or original_id == 'N/A':
         return await message.answer("Failed to get ID of the file")
 
-    if type not in ids.keys():
-        ids[type] = []
-    if id not in ids[type]:
-        ids[type].append(id)
+    unique_id = generate_unique_id()
+
+    # save
+    success = await file_db.add_file(unique_id, original_id, type, message.from_user.id)
+
+    if success:
         await message.answer(
-            f'File proceeded!\n\n<b>Type:</b> {type}\n<b>Your file ID</b>: <code>{id}</code>'
+            f'File proceeded!\n\n<b>Type:</b> {type}\n<b>Your file ID</b>: <code>{unique_id}</code>'
         )
     else:
-        await message.answer(
-            f'File already exists!\n\n<b>Its ID:</b> <code>{id}</code>'
-        )
+        await message.answer(f'File already exists!')
 
-    print(ids)
     await state.clear()
 
 
 async def get_file_by_id(message: Message, command: CommandObject):
-    id = command.args
-    if not id:
+    """Handler for the /get command — retrieves and sends a previously uploaded file by its unique ID."""
+    unique_id = command.args
+
+    if not unique_id:
         return await message.answer('Specify file ID: <code>/get file_id</code>')
+
+    file_info = await file_db.get_file_by_unique_id(unique_id)
+
+    if not file_info:
+        return await message.answer(f'No files found with ID: <code>{unique_id}</code>')
+
+    original_id, type = file_info['original_id'], file_info['type']
 
     type_methods = {
         'document': message.answer_document,
@@ -60,17 +71,35 @@ async def get_file_by_id(message: Message, command: CommandObject):
         'voice': message.answer_voice,
     }
 
-    for type, values in ids.items():
-        if id in values and type in type_methods:
-            try:
-                return await type_methods[type](id)
-            except Exception as e:
-                return await message.answer(f'Error occurred, when sending file: {e}')
+    try:
+        await type_methods[type](original_id)
+    except Exception as e:
+        await message.answer(f'Error occurred, when sending file: {e}')
 
-    await message.answer(f'No files found with ID: <code>{id}</code>')
+
+async def get_user_files(message: Message):
+    result = await file_db.get_user_files_paginated(message.from_user.id)
+
+    if not result['files']:
+        await message.answer("You don't have any uploaded files.")
+
+    files_text = ''.join(
+        [f'• {f['type']} <code>{f['unique_id']}</code>\n' for f in result['files']]
+    )
+    total_pages = (result['total'] + 19) // 20
+    text = (
+        f'<b>Your files (page 1/{total_pages}):</b>\n\n'
+        f'{files_text}\n\n'
+        f'<i>Total files: {result['total']}</i>'
+    )
+
+    await message.answer(
+        text, reply_markup=get_dynamic_pagination_keyboard(1, total_pages)
+    )
 
 
 def register_user_messages(dp: Dispatcher):
+    """Registers all user message handlers with the dispatcher."""
     dp.message.register(start, CommandStart())
     dp.message.register(
         file,
@@ -81,3 +110,4 @@ def register_user_messages(dp: Dispatcher):
         get_file_by_id,
         Command('get'),
     )
+    dp.message.register(get_user_files, Command('all'))
