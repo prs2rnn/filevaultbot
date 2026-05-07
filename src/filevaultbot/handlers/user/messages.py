@@ -2,11 +2,9 @@ from aiogram import Dispatcher, F
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-from database import FileDatabase
+from database import file_db
 from state.states import User
 from utils import generate_unique_id
-
-file_db = FileDatabase()
 
 
 async def start(message: Message, state: FSMContext):

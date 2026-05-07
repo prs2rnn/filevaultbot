@@ -43,11 +43,11 @@ class FileDatabase:
         await self._ensure_tables_exist()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                'SELECT original_id, type FROM files WHERE user_id = ? ORDER BY created_at DESC',
+                'SELECT unique_id, type FROM files WHERE user_id = ? ORDER BY created_at DESC',
                 (user_id,),
             )
             rows = await cursor.fetchall()
-            return [{'original_id': row[0], 'type': row[1]} for row in rows]
+            return [{'unique_id': row[0], 'type': row[1]} for row in rows]
 
     async def get_file_by_unique_id(self, unique_id: str):
         await self._ensure_tables_exist()
@@ -60,15 +60,4 @@ class FileDatabase:
                 return {'original_id': row[0], 'type': row[1]}
 
 
-async def main():
-    file_db = FileDatabase()
-    success = await file_db.add_file(
-        'asf24r23', '12afdf3e21', 'document', '1239210413u41'
-    )
-    print(success)
-    files = await file_db.get_user_files('1239210413u41')
-    print(files)
-
-
-if __name__ == '__main__':
-    asyncio.run(main())
+file_db = FileDatabase()
