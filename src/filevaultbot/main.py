@@ -7,6 +7,7 @@ from aiogram.types import BotCommand, BotCommandScopeDefault
 from config import BOT_TOKEN
 from handlers.user.callbacks import register_user_callbacks
 from handlers.user.messages import register_user_messages
+from utils import setup_logging
 
 
 async def set_bot_commands(bot: Bot):
@@ -19,17 +20,29 @@ async def set_bot_commands(bot: Bot):
 
 
 async def main():
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    )
-    dp = Dispatcher()
-    register_user_messages(dp)
-    register_user_callbacks(dp)
-    bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
-    await set_bot_commands(bot)
-    await dp.start_polling(bot)
+    setup_logging()
+    logger = logging.getLogger(__name__)
+
+    try:
+        dp = Dispatcher()
+        register_user_messages(dp)
+        register_user_callbacks(dp)
+
+        bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
+        await set_bot_commands(bot)
+        logger.info('Bot instance created and commands set')
+
+        logger.info('Starting polling...')
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.critical(f'Critical error: {e}', exc_info=True)
+    finally:
+        await bot.session.close()
+        logger.info('Bot stopped gracefully')
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.error('Bot stopped manually!')
