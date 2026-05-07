@@ -1,18 +1,74 @@
-import html
-
-from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram import Dispatcher, F
+from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-from keyboards import get_play_button
-from states.state import User
-
-router_message = Router()
+from state.states import User
 
 
-@router_message.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await message.answer(
-        text=f'<b>Hello, {html.escape(message.from_user.first_name)}!</b>\nThis bot asks you a number from 1 to 10, and you try to guess it',
-        reply_markup=get_play_button(),
+        text=f'<b>Welcome to the bot!</b>\nSend me a file, and I\'ll return its ID',
+    )
+    await state.set_state(User.file)
+    await state.update_data(ids={})
+
+
+async def file(message: Message, state: FSMContext):
+    if message.document:
+        type, id = 'document', message.document.file_id
+    elif message.photo:
+        type, id = 'photo', message.photo[-1].file_id
+    elif message.video:
+        type, id = 'video', message.video.file_id
+    elif message.audio:
+        type, id = 'audio', message.audio.file_id
+    elif message.voice:
+        type, id = 'voice', message.voice.file_id
+    else:
+        type, id = 'na', 'N/A'
+
+    data = await state.get_data()
+    ids = data.get('ids', {})
+    if type in ids.keys():
+        ids.get(type, []).append(id)
+    else:
+        ids[type] = []
+        ids.get(type).append(id)
+    print(data)
+
+    await message.answer(f'File proceeded!\n\nYour file ID: <code>{id}</code>')
+
+
+async def get_file_by_id(message: Message, command: CommandObject, state: FSMContext):
+    id = command.args
+    data = await state.get_data()
+    ids = data.get('ids', {})
+    for type, values in ids.items():
+        for v in values:
+            if v == id:
+                if type == 'document':
+                    return await message.answer_document(id)
+                elif type == 'photo':
+                    return await message.answer_photo(id)
+                elif type == 'video':
+                    return await message.answer_video(id)
+                elif type == 'audio':
+                    return await message.answer_audio(id)
+                elif type == 'voice':
+                    return await message.answer_voice(id)
+    await message.answer(text=f'No files found with ID: {id}')
+    print(id)
+
+
+def register_user_messages(dp: Dispatcher):
+    dp.message.register(start, CommandStart())
+    dp.message.register(
+        file,
+        StateFilter(User.file),
+        F.document | F.photo | F.video | F.audio | F.voice,
+    )
+    dp.message.register(
+        get_file_by_id,
+        StateFilter(User.file),
+        Command('get'),
     )

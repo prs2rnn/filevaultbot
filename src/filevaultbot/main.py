@@ -4,8 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from config import BOT_TOKEN
-from handlers.user.callbacks import router_callback
-from handlers.user.messages import router_message
+from handlers.user.messages import register_user_messages
 
 
 async def main():
@@ -14,7 +13,7 @@ async def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     )
     dp = Dispatcher()
-    dp.include_routers(router_message, router_callback)
+    register_user_messages(dp)
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
 
     await dp.start_polling(bot)
