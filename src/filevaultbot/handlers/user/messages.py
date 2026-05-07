@@ -4,7 +4,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from database import file_db
 from keyboards import get_dynamic_pagination_keyboard
-from state.states import User
 from utils import generate_unique_id
 
 
@@ -13,7 +12,6 @@ async def start(message: Message, state: FSMContext):
     await message.answer(
         text=f'<b>Welcome to the bot!</b>\nSend me a file, and I\'ll return its ID',
     )
-    await state.set_state(User.file)
 
 
 async def file(message: Message, state: FSMContext):
@@ -46,8 +44,6 @@ async def file(message: Message, state: FSMContext):
     else:
         await message.answer(f'File already exists!')
 
-    await state.clear()
-
 
 async def get_file_by_id(message: Message, command: CommandObject):
     """Handler for the /get command — retrieves and sends a previously uploaded file by its unique ID."""
@@ -77,7 +73,7 @@ async def get_file_by_id(message: Message, command: CommandObject):
         await message.answer(f'Error occurred, when sending file: {e}')
 
 
-async def get_user_files(message: Message):
+async def list_user_files(message: Message):
     result = await file_db.get_user_files_paginated(message.from_user.id)
 
     if not result['files']:
@@ -103,11 +99,10 @@ def register_user_messages(dp: Dispatcher):
     dp.message.register(start, CommandStart())
     dp.message.register(
         file,
-        StateFilter(User.file),
         F.document | F.photo | F.video | F.audio | F.voice,
     )
     dp.message.register(
         get_file_by_id,
         Command('get'),
     )
-    dp.message.register(get_user_files, Command('all'))
+    dp.message.register(list_user_files, Command('list'))
