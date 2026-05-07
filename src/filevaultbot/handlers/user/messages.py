@@ -2,17 +2,11 @@ from aiogram import Dispatcher, F
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from database import FileDatabase
 from state.states import User
 from utils import generate_unique_id
 
-# Global dictionary to store file mappings and IDs
-# WARNING: This approach is NOT recommended for production as it's not user-isolated
-# Structure:
-# {
-#   'file_mapping': {unique_id: {'original_id': str, 'type': str}},
-#   'ids_by_type': {file_type: [unique_ids]}
-# }
-ids = {}
+file_db = FileDatabase()
 
 
 async def start(message: Message, state: FSMContext):
@@ -43,25 +37,16 @@ async def file(message: Message, state: FSMContext):
 
     unique_id = generate_unique_id()
 
-    file_mapping = ids.get('file_mapping', {})
-    ids_by_type = ids.get('ids_by_type', {})
+    # save
+    success = await file_db.add_file(unique_id, original_id, type, message.from_user.id)
 
-    if type not in ids_by_type:
-        ids_by_type[type] = []
-    if original_id not in (i['original_id'] for i in file_mapping.values()):
-        ids_by_type[type].append(unique_id)
-        file_mapping[unique_id] = {'original_id': original_id, 'type': type}
+    if success:
         await message.answer(
             f'File proceeded!\n\n<b>Type:</b> {type}\n<b>Your file ID</b>: <code>{unique_id}</code>'
         )
     else:
-        await message.answer(
-            f'File already exists!\n\n<b>Its ID:</b> <code>{unique_id}</code>'
-        )
+        await message.answer(f'File already exists!')
 
-    ids.update(file_mapping=file_mapping, ids_by_type=ids_by_type)
-
-    print(ids)
     await state.clear()
 
 
@@ -72,12 +57,12 @@ async def get_file_by_id(message: Message, command: CommandObject):
     if not unique_id:
         return await message.answer('Specify file ID: <code>/get file_id</code>')
 
-    file_mapping = ids.get('file_mapping', {})
+    file_info = await file_db.get_file_by_unique_id(unique_id)
 
-    if unique_id not in file_mapping:
+    if not file_info:
         return await message.answer(f'No files found with ID: <code>{unique_id}</code>')
 
-    original_id, type = file_mapping[unique_id].values()
+    original_id, type = file_info['original_id'], file_info['type']
 
     type_methods = {
         'document': message.answer_document,
